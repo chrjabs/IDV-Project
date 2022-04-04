@@ -5,4 +5,4 @@ Visualization of the performance of different Pareto front enumeration algorithm
 
 ## Layout
 
-![A rough sketch of the visualiztion layout](planning/layout-sketch.jpg)
+![A rough sketch of the visualization layout](planning/layout-sketch.jpg)
