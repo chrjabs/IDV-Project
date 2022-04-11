@@ -5,6 +5,7 @@ from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objects as go
 import plotly.express as px
 import dash_bootstrap_components as dbc
+import dash_tabulator as dt
 
 # === Load Data ===
 
@@ -134,6 +135,8 @@ cactus_graphs = [
     dcc.Graph(id='hist-plot'),
 ]
 
+run_table = dt.DashTabulator(id='run-table')
+
 # --- Main Layout ---
 
 app = Dash(__name__,
@@ -156,7 +159,7 @@ app.layout = html.Div(
                     dbc.Col(alg_selector),
                     dbc.Col(inst_selector),
                 ]),
-                html.Div(id='div-table', style=box_style),
+                html.Div(id='div-table', style=dict(maxHeight='600px', height='600px', overflow='scroll', **box_style)),
             ]), width=4),
             dbc.Col(html.Div(id='div-right', style=box_style))
         ])]),
@@ -171,13 +174,14 @@ html.Div(id='test')
 @ app.callback(
     Output('div-inst-sel', 'children'),
     Output('div-right', 'children'),
+    Output('div-table', 'children'),
     Input('tabs-pages', 'value'),
 )
 def render_page(page):
     if page == 'algs-page':
-        return inst_selector_check, alg_right
+        return inst_selector_check, alg_right, run_table
     elif page == 'inst-page':
-        return inst_selector_radio, None
+        return inst_selector_radio, None, None
 
 
 @ app.callback(
@@ -243,6 +247,29 @@ def update_hist(algs, insts):
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=0), barmode='stack')
 
     return fig
+
+
+@app.callback(
+    Output('run-table', 'columns'),
+    Output('run-table', 'data'),
+    Input('checklist-alg', 'value'),
+    Input('checklist-inst', 'value'),
+)
+def update_hist(algs, insts):
+    data = time_data[time_data['alg'].isin(
+        algs) & time_data['instance'].isin(insts)]
+
+    tab_data = pd.DataFrame()
+
+    for _, row in data.iterrows():
+        tab_data.loc[row['instance'], row['alg']] = row['time']
+    tab_data['instance'] = tab_data.index
+
+    columns = [{'title': 'Instance', 'field': 'instance'}]
+    for a in algs:
+        columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {'min': 0, 'max': 5400}, 'hozAlign': 'left'})
+
+    return columns, tab_data.to_dict(orient='records')
 
 
 # === Main ===
