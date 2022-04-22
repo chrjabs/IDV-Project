@@ -1,5 +1,6 @@
 # Main file of the algview interactive visualization app
 
+import numpy as np
 import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objects as go
@@ -16,7 +17,7 @@ scsc_data = pd.read_pickle('data/scsc_data.pkl.gz')
 
 # Cactus Data
 cactus_include = ['time', 'instance', 'alg', 'timeout', 'memout']
-time_data = pd.concat([mlic_data[cactus_include],
+run_data = pd.concat([mlic_data[cactus_include],
                        scep_data[cactus_include], scsc_data[cactus_include]])
 
 # Instance data
@@ -32,6 +33,17 @@ scep_insts = scep_data['instance'].unique()
 scsc_insts = scsc_data['instance'].unique()
 insts = pd.concat(
     [mlic_data['instance'], scep_data['instance'], scsc_data['instance']]).unique()
+
+# Table Data
+table_data = pd.DataFrame()
+for alg in run_data['alg'].unique():
+    for inst in run_data['instance'].unique():
+        try:
+            table_data.loc[inst, alg] = run_data.loc[(
+                run_data['alg'] == alg) & (run_data['instance'] == inst), 'time'].iloc[0]
+        except IndexError:
+            table_data.loc[inst, alg] = np.nan
+table_data['instance'] = table_data.index
 
 # === Colour Scale ===
 
@@ -105,9 +117,10 @@ box_style = {'padding': '10px', 'border': '2px solid black'}
 
 # --- Reusable Elements ---
 
+startup_algs = ['bioptsat-msh', 'seesaw', 'pminimal', 'paretomcs']
 alg_selector = html.Div([
     html.H5('Algorithms'),
-    html.Div(id='div-alg-sel', children=[dcc.Checklist(options=algs, value=algs,
+    html.Div(id='div-alg-sel', children=[dcc.Checklist(options=algs, value=startup_algs,
              id='checklist-alg')], style={'height': '400px', 'maxHeight': '400px', 'overflow': 'scroll'}),
 ], style=box_style)
 
@@ -159,7 +172,8 @@ app.layout = html.Div(
                     dbc.Col(alg_selector),
                     dbc.Col(inst_selector),
                 ]),
-                html.Div(id='div-table', style=dict(maxHeight='600px', height='600px', overflow='scroll', **box_style)),
+                html.Div(id='div-table', style=dict(maxHeight='600px',
+                         height='600px', overflow='scroll', **box_style)),
             ]), width=4),
             dbc.Col(html.Div(id='div-right', style=box_style))
         ])]),
@@ -201,8 +215,8 @@ def render_view(view):
     Input('checklist-inst', 'value'),
 )
 def update_cactus(algs, insts):
-    data = time_data[time_data['alg'].isin(algs) & time_data['instance'].isin(insts)
-                     & ~time_data['timeout'] & ~time_data['memout']].sort_values('time')
+    data = run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
+                     & ~run_data['timeout'] & ~run_data['memout']].sort_values('time')
 
     for a in algs:
         data.loc[data['alg'] == a, 'rank'] = range(
@@ -232,8 +246,8 @@ def update_cactus(algs, insts):
     Input('checklist-inst', 'value'),
 )
 def update_hist(algs, insts):
-    data = time_data[time_data['alg'].isin(
-        algs) & time_data['instance'].isin(insts)]
+    data = run_data[run_data['alg'].isin(
+        algs) & run_data['instance'].isin(insts)]
 
     fig = go.Figure()
     for i, a in enumerate(data['alg'].unique()):
@@ -256,20 +270,13 @@ def update_hist(algs, insts):
     Input('checklist-inst', 'value'),
 )
 def update_hist(algs, insts):
-    data = time_data[time_data['alg'].isin(
-        algs) & time_data['instance'].isin(insts)]
-
-    tab_data = pd.DataFrame()
-
-    for _, row in data.iterrows():
-        tab_data.loc[row['instance'], row['alg']] = row['time']
-    tab_data['instance'] = tab_data.index
+    data = table_data.filter(items=insts, axis=0)[algs + ['instance']]
 
     columns = [{'title': 'Instance', 'field': 'instance'}]
     for a in algs:
         columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {'min': 0, 'max': 5400}, 'hozAlign': 'left'})
 
-    return columns, tab_data.to_dict(orient='records')
+    return columns, data.to_dict(orient='records')
 
 
 # === Main ===
