@@ -5,6 +5,7 @@ import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import dash_bootstrap_components as dbc
 import dash_tabulator as dt
 
@@ -18,7 +19,7 @@ scsc_data = pd.read_pickle('data/scsc_data.pkl.gz')
 # Cactus Data
 cactus_include = ['time', 'instance', 'alg', 'timeout', 'memout']
 run_data = pd.concat([mlic_data[cactus_include],
-                       scep_data[cactus_include], scsc_data[cactus_include]])
+                      scep_data[cactus_include], scsc_data[cactus_include]])
 
 # Instance data
 mlic_inst_data = pd.read_pickle('data/mlic_instances.pkl.gz')
@@ -44,10 +45,15 @@ for alg in run_data['alg'].unique():
         except IndexError:
             table_data.loc[inst, alg] = np.nan
 table_data['instance'] = table_data.index
+table_data['instance type'] = 'Decision Rule Learning'
+table_data.loc[table_data['instance'].str.startswith(
+    'fixed-element-prob'), 'instance type'] = 'SetCovering-EP'
+table_data.loc[table_data['instance'].str.startswith(
+    'fixed-set-card'), 'instance type'] = 'SetCovering-SC'
 
 # === Colour Scale ===
 
-colour_scale = [
+long_colour_scale = [
     # Tsitsul normal 12 colours colour scale
     # http://tsitsul.in/blog/coloropt/
     '#ebac23',
@@ -64,6 +70,17 @@ colour_scale = [
     '#00a75c',
     '#bdbdbd',
 ]
+short_colour_scale = [
+    # Tsitsul normal 8 colours colour scale
+    # http://tsitsul.in/blog/coloropt/
+    '#4053d3',
+    '#ddb310',
+    '#b51d14',
+    '#00beff',
+    '#fb49b0',
+    '#00b25d',
+    '#cacaca',
+]
 dash_scale = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot']
 
 
@@ -71,17 +88,17 @@ def alg_colour_dash_scale(alg):
     toks = alg.split('-')
     if toks[0] == 'bioptsat':
         if toks[1] == 'msh':
-            colour = colour_scale[0]
+            colour = long_colour_scale[0]
         elif toks[1] == 'su':
-            colour = colour_scale[1]
+            colour = long_colour_scale[1]
         elif toks[1] == 'msu3':
-            colour = colour_scale[2]
+            colour = long_colour_scale[2]
         elif toks[1] == 'us':
-            colour = colour_scale[3]
+            colour = long_colour_scale[3]
         elif toks[1] == 'oll':
-            colour = colour_scale[4]
+            colour = long_colour_scale[4]
         else:
-            colour = colour_scale[hash(toks[1]) % len(colour_scale)]
+            colour = long_colour_scale[hash(toks[1]) % len(long_colour_scale)]
 
         if len(toks) <= 2:
             dash = dash_scale[0]
@@ -89,17 +106,17 @@ def alg_colour_dash_scale(alg):
             dash = dash_scale[(hash('-'.join(toks[2:])) %
                                (len(dash_scale) - 1)) + 1]
     elif toks[0] == 'pminimal':
-        colour = colour_scale[5]
+        colour = long_colour_scale[5]
         dash = dash_scale[0]
     elif toks[0] == 'seesaw':
-        colour = colour_scale[6]
+        colour = long_colour_scale[6]
         if len(toks) <= 1:
             dash = dash_scale[0]
         else:
             dash = dash_scale[(hash('-'.join(toks[1:])) %
                                (len(dash_scale) - 1)) + 1]
     elif toks[0] == 'paretomcs':
-        colour = colour_scale[7]
+        colour = long_colour_scale[7]
         if len(toks) <= 1:
             dash = dash_scale[0]
         else:
@@ -107,6 +124,17 @@ def alg_colour_dash_scale(alg):
                                (len(dash_scale) - 1)) + 1]
 
     return colour, dash
+
+
+def instance_type_colour(inst_type):
+    if inst_type == 'Decision Rule Learning':
+        return short_colour_scale[0]
+    elif inst_type == 'SetCovering-EP':
+        return short_colour_scale[1]
+    elif inst_type == 'SetCovering-SC':
+        return short_colour_scale[2]
+    else:
+        return short_colour_scale[3]
 
 # === Application Layout ===
 
@@ -147,6 +175,8 @@ cactus_graphs = [
     dcc.Graph(id='cactus-plot'),
     dcc.Graph(id='hist-plot'),
 ]
+
+splom_graph = dcc.Graph(id='splom-plot')
 
 run_table = dt.DashTabulator(id='run-table')
 
@@ -206,7 +236,7 @@ def render_view(view):
     if view == 'cactus-view':
         return cactus_graphs
     elif view == 'scatter-view':
-        return None
+        return splom_graph
 
 
 @app.callback(
@@ -216,7 +246,7 @@ def render_view(view):
 )
 def update_cactus(algs, insts):
     data = run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
-                     & ~run_data['timeout'] & ~run_data['memout']].sort_values('time')
+                    & ~run_data['timeout'] & ~run_data['memout']].sort_values('time')
 
     for a in algs:
         data.loc[data['alg'] == a, 'rank'] = range(
@@ -274,9 +304,54 @@ def update_hist(algs, insts):
 
     columns = [{'title': 'Instance', 'field': 'instance'}]
     for a in algs:
-        columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {'min': 0, 'max': 5400}, 'hozAlign': 'left'})
+        columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {
+                       'min': 0, 'max': 5400}, 'hozAlign': 'left'})
 
     return columns, data.to_dict(orient='records')
+
+
+@app.callback(
+    Output('splom-plot', 'figure'),
+    Input('checklist-alg', 'value'),
+    Input('checklist-inst', 'value'),
+)
+def update_splom(algs, insts):
+    data = table_data.filter(items=insts, axis=0)[
+        algs + ['instance', 'instance type']]
+
+    fig = make_subplots(rows=len(algs), cols=len(
+        algs), shared_xaxes=True, shared_yaxes=True)
+
+    for i in range(len(algs)):
+        for j in range(len(algs)):
+            for it in data['instance type'].unique():
+                fig.add_trace(go.Scatter(x=data.loc[data['instance type'] == it, algs[i]], y=data.loc[data['instance type'] == it, algs[j]],
+                                         legendgroup=it, showlegend=(i == 0 and j == 0), mode='markers', marker=dict(color=instance_type_colour(it),
+                                         line_color='white', line_width=0.5), name=it), row=i+1, col=j+1)
+
+    diagonal_lines = []
+    for i in range(1, int((len(algs) * (len(algs)+1) / 2) + 1)):
+        xax = 'x{}'.format(i if i > 1 else '')
+        yax = 'y{}'.format(i if i > 1 else '')
+        diagonal_lines.extend([dict(layer='below', type='line', xref=xax, yref=yax, y0=0.01, y1=10000, x0=0.01, x1=10000,
+                                    line=dict(color=short_colour_scale[6], dash='dash')),
+                               dict(layer='below', type='line', xref=xax, yref=yax, y0=0.02, y1=10000,
+                                    x0=0.01, x1=5000, line=dict(color=short_colour_scale[6], dash='dot')),
+                               dict(layer='below', type='line', xref=xax, yref=yax, y0=0.01, y1=5000,
+                                    x0=0.02, x1=10000, line=dict(color=short_colour_scale[6], dash='dot'))])
+
+    fig.update_layout(shapes=diagonal_lines)
+    fig.update_xaxes(type='log', range=[-2, 4], matches='x', constrain='domain')
+    fig.update_yaxes(type='log', matches='x', scaleanchor='x', scaleratio=1)
+
+    for i in range(len(algs)):
+        fig.update_xaxes(title_text=algs[i], row=len(algs), col=i+1)
+        fig.update_yaxes(title_text=algs[i], row=i+1, col=1)
+
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0), dragmode='select', height=1000, width=1000,
+                      hovermode='closest', grid_xaxes=['x{}'.format(i) for i in range(1, len(algs)+1)])
+
+    return fig
 
 
 # === Main ===
