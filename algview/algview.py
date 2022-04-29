@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from dash import Dash, dcc, html, Input, Output, State
+from dash import Dash, dcc, html, Input, Output, State, callback_context
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -156,7 +156,7 @@ cactus_graphs = [
 
 splom_graph = dcc.Graph(id='splom-plot')
 
-run_table = dt.DashTabulator(id='run-table')
+run_table = dt.DashTabulator(id='run-table', options={'height': '600px', 'groupBy': 'row', 'selectable': True})
 
 # --- Main Layout ---
 
@@ -180,20 +180,18 @@ app.layout = html.Div(
                     dbc.Col(alg_selector),
                     dbc.Col(inst_selector),
                 ]),
-                html.Div(id='div-table', style=dict(maxHeight='600px',
-                         height='600px', overflow='scroll', **box_style)),
+                html.Div(id='div-table', style=box_style),
             ]), width=4),
             dbc.Col(html.Div(id='div-right', style=box_style))
         ])]),
+        dcc.Store(id='selected-inst'),
     ], style={'margin': '20px'}
 )
-
-html.Div(id='test')
 
 # === Application Callbacks ===
 
 
-@ app.callback(
+@app.callback(
     Output('div-inst-sel', 'children'),
     Output('div-right', 'children'),
     Output('div-table', 'children'),
@@ -206,7 +204,7 @@ def render_page(page):
         return inst_selector_radio, None, None
 
 
-@ app.callback(
+@app.callback(
     Output('div-view', 'children'),
     Input('tabs-view', 'value'),
 )
@@ -215,6 +213,30 @@ def render_view(view):
         return cactus_graphs
     elif view == 'scatter-view':
         return splom_graph
+
+
+@app.callback(
+    Output('selected-inst', 'data'),
+    Input('splom-plot', 'selectedData'), 
+    Input('run-table', 'multiRowsClicked'),
+    State('checklist-inst', 'value'),
+)
+def update_selected_inst(splom_select, table_select, filtered_inst):
+    ctx = callback_context
+    trigger = None
+    if ctx.triggered:
+        trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    selected_inst = filtered_inst
+    
+    if trigger == 'splom-plot':
+        if splom_select:
+            selected_inst = [p['id'] for p in splom_select['points']]
+    elif trigger == 'run-table':
+        if table_select:
+            selected_inst = [r['instance'] for r in table_select]
+
+    return selected_inst
 
 
 @app.callback(
@@ -277,7 +299,7 @@ def update_hist(algs, insts):
     Input('checklist-alg', 'value'),
     Input('checklist-inst', 'value'),
 )
-def update_hist(algs, insts):
+def update_table(algs, insts):
     data = table_data.filter(items=insts, axis=0)[algs + ['instance']]
 
     columns = [{'title': 'Instance', 'field': 'instance'}]
@@ -292,23 +314,33 @@ def update_hist(algs, insts):
     Output('splom-plot', 'figure'),
     Input('checklist-alg', 'value'),
     Input('checklist-inst', 'value'),
+    Input('selected-inst', 'data'),
 )
-def update_splom(algs, insts):
+def update_splom(algs, insts, selected_inst):
     data = table_data.filter(items=insts, axis=0)[
         algs + ['instance', 'instance type']]
+
+    instance_types = data['instance type'].unique()
+
+    selectedpoints = dict()
+    for it in instance_types:
+        selectedpoints[it] = np.where(data.loc[data['instance type'] == it, 'instance'].isin(selected_inst))[0]
 
     fig = make_subplots(rows=len(algs), cols=len(
         algs), shared_xaxes=True, shared_yaxes=True)
 
     for i in range(len(algs)):
         for j in range(len(algs)):
-            for it in data['instance type'].unique():
+            for it in instance_types:
                 fig.add_trace(go.Scatter(x=data.loc[data['instance type'] == it, algs[i]], y=data.loc[data['instance type'] == it, algs[j]],
                                          hovertemplate='<b>instance: %{text}</b><br>' +
                                          algs[i] + ': %{x}<br>' +
                                          algs[j] + ': %{y}',
                                          text=data.loc[data['instance type']
                                                        == it, 'instance'],
+                                         ids=data.loc[data['instance type']
+                                                      == it, 'instance'],
+                                         selectedpoints=selectedpoints[it],
                                          legendgroup=it, showlegend=(i == 0 and j == 0), mode='markers', marker=dict(color=instance_type_colour(it),
                                          line_color='white', line_width=0.5), name=it), row=j+1, col=i+1)
 
