@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State, callback_context
+from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -133,7 +134,7 @@ alg_selector = html.Div([
 inst_selector_check = dcc.Checklist(
     options=insts, value=insts, id='checklist-inst')
 inst_selector_radio = dcc.RadioItems(
-    options=insts, value=None, id='radio-inst')
+    options=insts, value=insts[0], id='radio-inst')
 
 inst_selector = html.Div([
     html.H5('Instances'),
@@ -156,7 +157,16 @@ cactus_graphs = [
 
 splom_graph = dcc.Graph(id='splom-plot')
 
-run_table = dt.DashTabulator(id='run-table', options={'height': '600px', 'groupBy': 'row', 'selectable': True})
+run_table = dt.DashTabulator(
+    id='run-table', options={'height': '600px', 'groupBy': 'row', 'selectable': True})
+
+inst_right = [
+    dbc.Row([dbc.Col(dcc.Graph(id='paretofront-plot'))]),
+    dbc.Row([
+        dbc.Col(dcc.Graph(id='runtime-plot'), width=6),
+        dbc.Col(dcc.Graph(id='progress-plot'), width=6),
+    ]),
+]
 
 # --- Main Layout ---
 
@@ -182,7 +192,7 @@ app.layout = html.Div(
                 ]),
                 html.Div(id='div-table', style=box_style),
             ]), width=4),
-            dbc.Col(html.Div(id='div-right', style=box_style))
+            dbc.Col(html.Div(id='div-right', style=box_style), width=8)
         ])]),
         dcc.Store(id='selected-inst'),
     ], style={'margin': '20px'}
@@ -201,7 +211,7 @@ def render_page(page):
     if page == 'algs-page':
         return inst_selector_check, alg_right, run_table
     elif page == 'inst-page':
-        return inst_selector_radio, None, None
+        return inst_selector_radio, inst_right, None
 
 
 @app.callback(
@@ -217,7 +227,7 @@ def render_view(view):
 
 @app.callback(
     Output('selected-inst', 'data'),
-    Input('splom-plot', 'selectedData'), 
+    Input('splom-plot', 'selectedData'),
     Input('run-table', 'multiRowsClicked'),
     State('checklist-inst', 'value'),
 )
@@ -228,7 +238,7 @@ def update_selected_inst(splom_select, table_select, filtered_inst):
         trigger = ctx.triggered[0]['prop_id'].split('.')[0]
 
     selected_inst = filtered_inst
-    
+
     if trigger == 'splom-plot':
         if splom_select:
             selected_inst = [p['id'] for p in splom_select['points']]
@@ -253,7 +263,7 @@ def update_cactus(algs, insts):
             1, (data['alg'] == a).sum()+1)
 
     fig = go.Figure()
-    for i, a in enumerate(data['alg'].unique()):
+    for a in algs:
         colour, dash = alg_colour_dash_scale(a)
         fig.add_trace(go.Scatter(x=data.loc[data['alg'] == a, 'rank'], y=data.loc[data['alg'] == a, 'time'],
                                  hovertemplate='<b>algorithm: ' + a +
@@ -280,7 +290,7 @@ def update_hist(algs, insts):
         algs) & run_data['instance'].isin(insts)]
 
     fig = go.Figure()
-    for i, a in enumerate(data['alg'].unique()):
+    for a in algs:
         colour, dash = alg_colour_dash_scale(a)
         fig.add_trace(go.Histogram(
             x=data.loc[data['alg'] == a, 'time'], name=a, marker=dict(color=colour)))
@@ -324,7 +334,8 @@ def update_splom(algs, insts, selected_inst):
 
     selectedpoints = dict()
     for it in instance_types:
-        selectedpoints[it] = np.where(data.loc[data['instance type'] == it, 'instance'].isin(selected_inst))[0]
+        selectedpoints[it] = np.where(
+            data.loc[data['instance type'] == it, 'instance'].isin(selected_inst))[0]
 
     fig = make_subplots(rows=len(algs), cols=len(
         algs), shared_xaxes=True, shared_yaxes=True)
@@ -370,7 +381,51 @@ def update_splom(algs, insts, selected_inst):
     return fig
 
 
-# === Main ===
+@app.callback(
+    Output('paretofront-plot', 'figure'),
+    Input('checklist-alg', 'value'),
+    Input('radio-inst', 'value'),
+)
+def update_paretofront(algs, inst):
+    if not inst:
+        raise PreventUpdate
 
+    data = run_data[run_data['alg'].isin(algs) & (run_data['instance'] == inst)]
+
+    if data.shape[0] == 0:
+        raise PreventUpdate
+
+    up_name = data.iloc[0]['up name']
+    down_name = data.iloc[0]['down name']
+
+    fig = go.Figure()
+    for a in algs:
+        colour, dash = alg_colour_dash_scale(a)
+        if (data['alg'] != a).all():
+            continue
+        pf = data.loc[data['alg'] == a, 'paretofront'].iloc[0]
+        if data.loc[data['alg'] == a, 'up name'].iloc[0] == down_name:
+            # Flip pareto front
+            pf = [dict(up=pp['down'], down=pp['up'], **dict((k, pp[k])
+                       for k in pp if k not in ('up', 'down'))) for pp in pf]
+        fig.add_trace(go.Scatter(x=[pp['up'] for pp in pf], y=[pp['down'] for pp in pf],
+                                 hovertemplate='<b>algorithm: ' + a +
+                                 '</b><br><i>' + up_name +
+                                 ': %{x}<br>' + down_name +
+                                 ': %{y}s</i><br>%{text}',
+                                 text=['# sols: {}<br>sols: {}'.format(
+                                     pp['n_sols'], pp['models']) for pp in pf],
+                                 name=a, mode='lines+markers',
+                                 line=dict(color=colour, dash=dash, shape='hv'), marker=dict(size=5)))
+
+    fig.update_xaxes(title_text=up_name)
+    fig.update_yaxes(title_text=down_name)
+
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+
+    return fig
+
+
+# === Main ===
 if __name__ == '__main__':
     app.run_server(debug=True)

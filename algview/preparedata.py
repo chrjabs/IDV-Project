@@ -3,10 +3,8 @@
 import pandas as pd
 import numpy as np
 
-def prepare_data(mlic_data, scep_data, scsc_data,
-                 cactus_include=['time', 'instance', 'alg', 'timeout', 'memout']):
-    run_data = pd.concat([mlic_data[cactus_include],
-                          scep_data[cactus_include], scsc_data[cactus_include]])
+def prepare_data(mlic_data, scep_data, scsc_data):
+    run_data = pd.concat([mlic_data, scep_data, scsc_data])
 
     table_data = pd.DataFrame()
     for alg in run_data['alg'].unique():
