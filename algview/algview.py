@@ -390,7 +390,8 @@ def update_paretofront(algs, inst):
     if not inst:
         raise PreventUpdate
 
-    data = run_data[run_data['alg'].isin(algs) & (run_data['instance'] == inst)]
+    data = run_data[run_data['alg'].isin(
+        algs) & (run_data['instance'] == inst)]
 
     if data.shape[0] == 0:
         raise PreventUpdate
@@ -412,7 +413,7 @@ def update_paretofront(algs, inst):
                                  hovertemplate='<b>algorithm: ' + a +
                                  '</b><br><i>' + up_name +
                                  ': %{x}<br>' + down_name +
-                                 ': %{y}s</i><br>%{text}',
+                                 ': %{y}</i><br>%{text}',
                                  text=['# sols: {}<br>sols: {}'.format(
                                      pp['n_sols'], pp['models']) for pp in pf],
                                  name=a, mode='lines+markers',
@@ -435,16 +436,60 @@ def update_runtimes(algs, inst):
     if not inst:
         raise PreventUpdate
 
-    data = run_data[run_data['alg'].isin(algs) & (run_data['instance'] == inst)]
+    data = run_data[run_data['alg'].isin(
+        algs) & (run_data['instance'] == inst)].sort_values('time')
 
     if data.shape[0] == 0:
         raise PreventUpdate
 
     fig = go.Figure([go.Bar(x=data['alg'], y=data['time'], )])
-    fig.update_traces(marker=dict(color=[alg_colour_dash_scale(a)[0] for a in data['alg'].unique()]))
+    fig.update_traces(marker=dict(
+        color=[alg_colour_dash_scale(a)[0] for a in data['alg'].unique()]))
 
     fig.update_xaxes(title_text='Algorithm')
     fig.update_yaxes(title_text='cpu time', type='log', range=[-2, 4])
+
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
+
+    return fig
+
+
+@app.callback(
+    Output('progress-plot', 'figure'),
+    Input('checklist-alg', 'value'),
+    Input('radio-inst', 'value'),
+)
+def update_progress(algs, inst):
+    if not inst:
+        raise PreventUpdate
+
+    data = run_data[run_data['alg'].isin(
+        algs) & (run_data['instance'] == inst)]
+
+    if data.shape[0] == 0:
+        raise PreventUpdate
+
+    fig = go.Figure()
+    for a in algs:
+        colour, dash = alg_colour_dash_scale(a)
+        if (data['alg'] != a).all():
+            continue
+        prog = data.loc[data['alg'] == a, 'progress'].iloc[0]
+        up_name = data.loc[data['alg'] == a, 'up name'].iloc[0]
+        down_name = data.loc[data['alg'] == a, 'down name'].iloc[0]
+        if not isinstance(prog, list) or len(prog) == 0:
+            # Progress data is not available for all algorithms
+            continue
+        fig.add_trace(go.Scatter(x=[0] + [i for i in range(1, len(prog)+1)], y=[0] + [pp['absolute cpu time'] for pp in prog],
+                                 hovertemplate='<b>algorithm: ' + a +
+                                 '</b><br><i># pareto points: %{x}<br>cup time: %{y}s</i><br>%{text}',
+                                 text=['{}: {}<br>{}: {}'.format(
+                                     up_name, pp['up'], down_name, pp['down']) for pp in prog],
+                                 name=a, mode='lines+markers',
+                                 line=dict(color=colour, dash=dash), marker=dict(size=5)))
+
+    fig.update_xaxes(title_text='# pareto points')
+    fig.update_yaxes(title_text='cpu time')
 
     fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
 
