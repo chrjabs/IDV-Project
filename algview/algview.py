@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from dash import Dash, dcc, html, Input, Output, State, callback_context
 from dash.exceptions import PreventUpdate
+from dash.dash_table import DataTable
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -158,7 +159,7 @@ cactus_graphs = [
 splom_graph = dcc.Graph(id='splom-plot')
 
 run_table = dt.DashTabulator(
-    id='run-table', options={'height': '600px', 'groupBy': 'row', 'selectable': True})
+    id='run-table', options={'height': '600px', 'selectable': True})
 
 inst_right = [
     dbc.Row([dbc.Col(dcc.Graph(id='paretofront-plot'))]),
@@ -166,6 +167,13 @@ inst_right = [
         dbc.Col(dcc.Graph(id='runtime-plot'), width=6),
         dbc.Col(dcc.Graph(id='progress-plot'), width=6),
     ]),
+]
+
+inst_tables = [
+    html.H5('Instance Data'),
+    dt.DashTabulator(id='inst-data-table'),
+    html.H5('Run Data'),
+    dt.DashTabulator(id='run-data-table', options={'height': '200px'}),
 ]
 
 # --- Main Layout ---
@@ -211,7 +219,7 @@ def render_page(page):
     if page == 'algs-page':
         return inst_selector_check, alg_right, run_table
     elif page == 'inst-page':
-        return inst_selector_radio, inst_right, None
+        return inst_selector_radio, inst_right, inst_tables
 
 
 @app.callback(
@@ -494,6 +502,73 @@ def update_progress(algs, inst):
     fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
 
     return fig
+
+
+@app.callback(
+    Output('run-data-table', 'data'),
+    Output('run-data-table', 'columns'),
+    Input('checklist-alg', 'value'),
+    Input('radio-inst', 'value'),
+)
+def update_inst_run_table(algs, inst):
+    if not inst:
+        raise PreventUpdate
+
+    data = run_data[run_data['alg'].isin(
+        algs) & (run_data['instance'] == inst)]
+
+    if data.shape[0] == 0:
+        raise PreventUpdate
+
+    table_data = pd.DataFrame(columns=algs)
+    table_rows = ['time', 'timeout', 'memout', 'cluster node']
+    for a in algs:
+        if (data['alg'] != a).all():
+            continue
+        for row in table_rows:
+            table_data.loc[row, a] = data.loc[data['alg'] == a, row].iloc[0]
+        solver_stats = data.loc[data['alg'] == a, 'satsolver stats'].iloc[0]
+        if isinstance(solver_stats, dict):
+            for k, v in solver_stats.items():
+                if isinstance(v, dict):
+                    for k2, v2 in v.items():
+                        table_data.loc['{}.{}'.format(k, k2), a] = v2
+                else:
+                    table_data.loc[k, a] = v
+
+    table_data['datum'] = table_data.index
+
+    return table_data.to_dict('records'),\
+        [{'title': 'Datum', 'field': 'datum', 'headerSort': False}] + \
+        [{'title': a, 'field': a, 'headerSort': False} for a in algs]
+
+
+@app.callback(
+    Output('inst-data-table', 'data'),
+    Output('inst-data-table', 'columns'),
+    Input('radio-inst', 'value'),
+)
+def update_inst_run_table(inst):
+    if not inst:
+        raise PreventUpdate
+
+    data = None
+    if inst.startswith('fixed-element-prob'):
+        data = scep_inst_data.loc[inst]
+    elif inst.startswith('fixed-set-card'):
+        data = scsc_inst_data.loc[inst]
+    else:
+        data = mlic_inst_data.loc[inst]
+
+    table_data = pd.DataFrame(columns=algs)
+    for row in data.index:
+        table_data.loc[row, 'value'] = data[row]
+
+    table_data['datum'] = table_data.index
+
+    return table_data.to_dict('records'),\
+        [{'title': 'Datum', 'field': 'datum', 'headerSort': False},
+         {'title': 'Value', 'field': 'value', 'headerSort': False}]
 
 
 # === Main ===
