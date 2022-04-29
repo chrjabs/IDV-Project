@@ -275,7 +275,7 @@ def update_cactus(algs, insts):
     fig.update_xaxes(title_text='# instances')
     fig.update_yaxes(title_text='cpu time')
 
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
 
     return fig
 
@@ -298,7 +298,7 @@ def update_hist(algs, insts):
     fig.update_xaxes(title_text='cpu time')
     fig.update_yaxes(title_text='# runs')
 
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0), barmode='stack')
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20), barmode='stack')
 
     return fig
 
@@ -375,7 +375,7 @@ def update_splom(algs, insts, selected_inst):
         fig.update_xaxes(title_text=algs[i], row=len(algs), col=i+1)
         fig.update_yaxes(title_text=algs[i], row=i+1, col=1)
 
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0), dragmode='select', height=1000, width=1000,
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20), dragmode='select', height=1000, width=1000,
                       hovermode='closest', grid_xaxes=['x{}'.format(i) for i in range(1, len(algs)+1)])
 
     return fig
@@ -421,7 +421,32 @@ def update_paretofront(algs, inst):
     fig.update_xaxes(title_text=up_name)
     fig.update_yaxes(title_text=down_name)
 
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
+
+    return fig
+
+
+@app.callback(
+    Output('runtime-plot', 'figure'),
+    Input('checklist-alg', 'value'),
+    Input('radio-inst', 'value'),
+)
+def update_runtimes(algs, inst):
+    if not inst:
+        raise PreventUpdate
+
+    data = run_data[run_data['alg'].isin(algs) & (run_data['instance'] == inst)]
+
+    if data.shape[0] == 0:
+        raise PreventUpdate
+
+    fig = go.Figure([go.Bar(x=data['alg'], y=data['time'], )])
+    fig.update_traces(marker=dict(color=[alg_colour_dash_scale(a)[0] for a in data['alg'].unique()]))
+
+    fig.update_xaxes(title_text='Algorithm')
+    fig.update_yaxes(title_text='cpu time', type='log', range=[-2, 4])
+
+    fig.update_layout(margin=dict(l=20, r=20, b=20, t=20))
 
     return fig
 
