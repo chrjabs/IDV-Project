@@ -12,14 +12,7 @@ import dash_tabulator as dt
 # === Load Data ===
 
 # Run data
-mlic_data = pd.read_pickle('data/mlic_data.pkl.gz')
-scep_data = pd.read_pickle('data/scep_data.pkl.gz')
-scsc_data = pd.read_pickle('data/scsc_data.pkl.gz')
-
-# Cactus Data
-cactus_include = ['time', 'instance', 'alg', 'timeout', 'memout']
-run_data = pd.concat([mlic_data[cactus_include],
-                      scep_data[cactus_include], scsc_data[cactus_include]])
+run_data = pd.read_pickle('data/run_data.pkl.gz')
 
 # Instance data
 mlic_inst_data = pd.read_pickle('data/mlic_instances.pkl.gz')
@@ -27,29 +20,14 @@ scep_inst_data = pd.read_pickle('data/scep_instances.pkl.gz')
 scsc_inst_data = pd.read_pickle('data/scsc_instances.pkl.gz')
 
 # Summaries
-algs = pd.concat([mlic_data['alg'], scep_data['alg'],
-                 scsc_data['alg']]).unique()
-mlic_insts = mlic_data['instance'].unique()
-scep_insts = scep_data['instance'].unique()
-scsc_insts = scsc_data['instance'].unique()
-insts = pd.concat(
-    [mlic_data['instance'], scep_data['instance'], scsc_data['instance']]).unique()
+algs = run_data['alg'].unique()
+mlic_insts = mlic_inst_data.index.to_series()
+scep_insts = scep_inst_data.index.to_series()
+scsc_insts = scsc_inst_data.index.to_series()
+insts = pd.concat([mlic_insts, scep_insts, scsc_insts]).unique()
 
 # Table Data
-table_data = pd.DataFrame()
-for alg in run_data['alg'].unique():
-    for inst in run_data['instance'].unique():
-        try:
-            table_data.loc[inst, alg] = run_data.loc[(
-                run_data['alg'] == alg) & (run_data['instance'] == inst), 'time'].iloc[0]
-        except IndexError:
-            table_data.loc[inst, alg] = np.nan
-table_data['instance'] = table_data.index
-table_data['instance type'] = 'Decision Rule Learning'
-table_data.loc[table_data['instance'].str.startswith(
-    'fixed-element-prob'), 'instance type'] = 'SetCovering-EP'
-table_data.loc[table_data['instance'].str.startswith(
-    'fixed-set-card'), 'instance type'] = 'SetCovering-SC'
+table_data = pd.read_pickle('data/table_data.pkl.gz')
 
 # === Colour Scale ===
 
@@ -326,11 +304,16 @@ def update_splom(algs, insts):
         for j in range(len(algs)):
             for it in data['instance type'].unique():
                 fig.add_trace(go.Scatter(x=data.loc[data['instance type'] == it, algs[i]], y=data.loc[data['instance type'] == it, algs[j]],
+                                         hovertemplate='<b>instance: %{text}</b><br>' +
+                                         algs[i] + ': %{x}<br>' +
+                                         algs[j] + ': %{y}',
+                                         text=data.loc[data['instance type']
+                                                       == it, 'instance'],
                                          legendgroup=it, showlegend=(i == 0 and j == 0), mode='markers', marker=dict(color=instance_type_colour(it),
-                                         line_color='white', line_width=0.5), name=it), row=i+1, col=j+1)
+                                         line_color='white', line_width=0.5), name=it), row=j+1, col=i+1)
 
     diagonal_lines = []
-    for i in range(1, int((len(algs) * (len(algs)+1) / 2) + 1)):
+    for i in range(1, len(algs)**2+1):
         xax = 'x{}'.format(i if i > 1 else '')
         yax = 'y{}'.format(i if i > 1 else '')
         diagonal_lines.extend([dict(layer='below', type='line', xref=xax, yref=yax, y0=0.01, y1=10000, x0=0.01, x1=10000,
@@ -341,7 +324,8 @@ def update_splom(algs, insts):
                                     x0=0.02, x1=10000, line=dict(color=short_colour_scale[6], dash='dot'))])
 
     fig.update_layout(shapes=diagonal_lines)
-    fig.update_xaxes(type='log', range=[-2, 4], matches='x', constrain='domain')
+    fig.update_xaxes(type='log', range=[-2, 4],
+                     matches='x', constrain='domain')
     fig.update_yaxes(type='log', matches='x', scaleanchor='x', scaleratio=1)
 
     for i in range(len(algs)):
