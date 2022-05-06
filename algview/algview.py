@@ -149,16 +149,25 @@ inst_selector_check = dbc.Accordion([
     dbc.AccordionItem(AllNoneChecklist(scsc_insts, scsc_insts, max_height='220px'),
                       title='SetCovering-SC'),
 ], flush=True)
-inst_selector_radio = dcc.RadioItems(
-    options=insts, value=insts[0], id='radio-inst')
+inst_selector_radio = dbc.Accordion([
+    dbc.AccordionItem(html.Div(dcc.RadioItems(options=mlic_insts, value=mlic_insts[0],
+                               id='radio-mlic-inst'), style={'maxHeight': '250px', 'overflow': 'scroll'}),
+                      title='Decision Rule Learning'),
+    dbc.AccordionItem(html.Div(dcc.RadioItems(options=scep_insts, value=None,
+                               id='radio-scep-inst'), style={'maxHeight': '250px', 'overflow': 'scroll'}),
+                      title='SetCovering-EP'),
+    dbc.AccordionItem(html.Div(dcc.RadioItems(options=scsc_insts, value=None,
+                               id='radio-scsc-inst'), style={'maxHeight': '250px', 'overflow': 'scroll'}),
+                      title='SetCovering-SC'),
+], flush=True)
 
-inst_selector = html.Div([
+inst_selector=html.Div([
     html.H5('Instances'),
     html.Div(id='div-inst-sel', children=[inst_selector_check],
              style={'height': '400px', 'maxHeight': '400px'}),
-], style=box_style)
+], style = box_style)
 
-alg_right = [
+alg_right=[
     dcc.Tabs(id='tabs-view', value='cactus-view', children=[
         dcc.Tab(label='Overview - Cactus and Histogram', value='cactus-view'),
         dcc.Tab(label='Pairwise Comparison', value='scatter-view'),
@@ -174,9 +183,9 @@ cactus_graphs = [
 splom_graph = dcc.Graph(id='splom-plot')
 
 run_table = dt.DashTabulator(
-    id='run-table', options={'height': '600px', 'selectable': True})
+    id = 'run-table', options = {'height': '600px', 'selectable': True})
 
-inst_right = [
+inst_right=[
     dcc.Graph(id='paretofront-plot'),
     dbc.Row([
         dbc.Col(dcc.Graph(id='runtime-plot'), width=6),
@@ -194,7 +203,7 @@ inst_tables = [
 # --- Main Layout ---
 
 app.layout = html.Div(
-    children=[
+    children = [
         html.H1('AlgView - View Algorithm Runtime Data'),
         dcc.Tabs(id='tabs-pages', value='algs-page', children=[
             dcc.Tab(label='Algorithms Page', value='algs-page'),
@@ -212,13 +221,14 @@ app.layout = html.Div(
         ])]),
         dcc.Store(id='filtered-inst'),
         dcc.Store(id='selected-inst'),
-    ], style={'margin': '20px'}
+        dcc.Store(id='single-inst'),
+    ], style = {'margin': '20px'}
 )
 
 # === Application Callbacks ===
 
 
-@app.callback(
+@ app.callback(
     Output('div-inst-sel', 'children'),
     Output('div-right', 'children'),
     Output('div-table', 'children'),
@@ -231,7 +241,7 @@ def render_page(page):
         return inst_selector_radio, inst_right, inst_tables
 
 
-@app.callback(
+@ app.callback(
     Output('div-view', 'children'),
     Input('tabs-view', 'value'),
 )
@@ -242,37 +252,37 @@ def render_view(view):
         return splom_graph
 
 
-@app.callback(
+@ app.callback(
     Output('selected-inst', 'data'),
     Input('splom-plot', 'selectedData'),
     Input('run-table', 'multiRowsClicked'),
     State('filtered-inst', 'data'),
 )
 def update_selected_inst(splom_select, table_select, filtered_inst):
-    ctx = callback_context
-    trigger = None
+    ctx=callback_context
+    trigger=None
     if ctx.triggered:
-        trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+        trigger=ctx.triggered[0]['prop_id'].split('.')[0]
 
-    selected_inst = filtered_inst
+    selected_inst=filtered_inst
 
     if trigger == 'splom-plot':
         if splom_select:
-            selected_inst = [p['id'] for p in splom_select['points']]
+            selected_inst=[p['id'] for p in splom_select['points']]
     elif trigger == 'run-table':
         if table_select:
-            selected_inst = [r['instance'] for r in table_select]
+            selected_inst=[r['instance'] for r in table_select]
 
     return selected_inst
 
 
-@app.callback(
+@ app.callback(
     Output('cactus-plot', 'figure'),
     Input('checklist-alg', 'value'),
     Input('filtered-inst', 'data'),
 )
 def update_cactus(algs, insts):
-    data = run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
+    data=run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
                     & ~run_data['timeout'] & ~run_data['memout']].sort_values('time')
 
     for a in algs:
@@ -402,7 +412,7 @@ def update_splom(algs, insts, selected_inst):
 @app.callback(
     Output('paretofront-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('radio-inst', 'value'),
+    Input('single-inst', 'data'),
 )
 def update_paretofront(algs, inst):
     if not inst:
@@ -448,7 +458,7 @@ def update_paretofront(algs, inst):
 @app.callback(
     Output('runtime-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('radio-inst', 'value'),
+    Input('single-inst', 'data'),
 )
 def update_runtimes(algs, inst):
     if not inst:
@@ -475,7 +485,7 @@ def update_runtimes(algs, inst):
 @app.callback(
     Output('progress-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('radio-inst', 'value'),
+    Input('single-inst', 'data'),
 )
 def update_progress(algs, inst):
     if not inst:
@@ -518,7 +528,7 @@ def update_progress(algs, inst):
     Output('run-data-table', 'data'),
     Output('run-data-table', 'columns'),
     Input('checklist-alg', 'value'),
-    Input('radio-inst', 'value'),
+    Input('single-inst', 'data'),
 )
 def update_inst_run_table(algs, inst):
     if not inst:
@@ -556,7 +566,7 @@ def update_inst_run_table(algs, inst):
 @app.callback(
     Output('inst-data-table', 'data'),
     Output('inst-data-table', 'columns'),
-    Input('radio-inst', 'value'),
+    Input('single-inst', 'data'),
 )
 def update_inst_run_table(inst):
     if not inst:
@@ -590,3 +600,28 @@ setup_anc(app)
 )
 def update_filtered_insts(values):
     return list(itertools.chain.from_iterable(values))
+
+
+@app.callback(
+    Output('single-inst', 'data'),
+    Output('radio-mlic-inst', 'value'),
+    Output('radio-scep-inst', 'value'),
+    Output('radio-scsc-inst', 'value'),
+    Input('radio-mlic-inst', 'value'),
+    Input('radio-scep-inst', 'value'),
+    Input('radio-scsc-inst', 'value'),
+)
+def update_radio_inst(mlic, scep, scsc):
+    ctx = callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if 'mlic' in trigger:
+        return mlic, mlic, None, None
+    elif 'scep' in trigger:
+        return scep, None, scep, None
+    elif 'scsc' in trigger:
+        return scsc, None, None, scsc
+    else:
+        raise PreventUpdate
