@@ -453,10 +453,12 @@ def update_paretofront(algs, inst):
         if (data['alg'] != a).all():
             continue
         pf = data.loc[data['alg'] == a, 'paretofront'].iloc[0]
+        lineshape = 'hv'
         if data.loc[data['alg'] == a, 'up name'].iloc[0] == down_name:
             # Flip pareto front
             pf = [dict(up=pp['down'], down=pp['up'], **dict((k, pp[k])
                        for k in pp if k not in ('up', 'down'))) for pp in pf]
+            lineshape = 'vh'
         fig.add_trace(go.Scatter(x=[pp['up'] for pp in pf], y=[pp['down'] for pp in pf],
                                  hovertemplate='<b>algorithm: ' + a +
                                  '</b><br><i>' + up_name +
@@ -465,7 +467,7 @@ def update_paretofront(algs, inst):
                                  text=['# sols: {}<br>sols: {}'.format(
                                      pp['n_sols'], pp['models']) for pp in pf],
                                  name=a, mode='lines+markers',
-                                 line=dict(color=colour, dash=dash, shape='hv'), marker=dict(size=5)))
+                                 line=dict(color=colour, dash=dash, shape=lineshape), marker=dict(size=5)))
 
     fig.update_xaxes(title_text=up_name)
     fig.update_yaxes(title_text=down_name)
