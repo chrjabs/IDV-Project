@@ -25,6 +25,10 @@ scsc_inst_data = pd.read_pickle('data/scsc_instances.pkl.gz')
 
 # Summaries
 algs = np.sort(run_data['alg'].unique())
+bioptsat_algs = [a for a in algs if 'bioptsat' in a]
+pminimal_algs = [a for a in algs if 'pminimal' in a]
+seesaw_algs = [a for a in algs if 'seesaw' in a]
+paretomcs_algs = [a for a in algs if 'paretomcs' in a]
 mlic_insts = mlic_inst_data.index.to_series()
 scep_insts = scep_inst_data.index.to_series()
 scsc_insts = scsc_inst_data.index.to_series()
@@ -137,16 +141,31 @@ box_style = {'padding': '10px', 'border': '2px solid black'}
 startup_algs = ['bioptsat-msh', 'seesaw', 'pminimal', 'paretomcs']
 alg_selector = html.Div([
     html.H5('Algorithms'),
-    html.Div(id='div-alg-sel', children=[dcc.Checklist(options=algs, value=startup_algs,
-             id='checklist-alg')], style={'height': '400px', 'maxHeight': '400px', 'overflow': 'scroll'}),
+    html.Div(id='div-alg-sel', children=dbc.Accordion([
+        dbc.AccordionItem(AllNoneChecklist(bioptsat_algs, ['bioptsat-msh'],
+                                           group='alg-filter', max_height='190px'),
+                          title='BiOptSat'),
+        dbc.AccordionItem(AllNoneChecklist(pminimal_algs, ['pminimal'],
+                                           group='alg-filter', max_height='190px'),
+                          title='P-minimal'),
+        dbc.AccordionItem(AllNoneChecklist(seesaw_algs, ['seesaw-satexmin'],
+                                           group='alg-filter', max_height='190px'),
+                          title='Seesaw'),
+        dbc.AccordionItem(AllNoneChecklist(paretomcs_algs, ['paretomcs'],
+                                           group='alg-filter', max_height='190px'),
+                          title='ParetoMCS'),
+    ], flush=True), style={'height': '400px', 'maxHeight': '400px'}),
 ], style=box_style)
 
 inst_selector_check = dbc.Accordion([
-    dbc.AccordionItem(AllNoneChecklist(mlic_insts, mlic_insts, max_height='220px'),
+    dbc.AccordionItem(AllNoneChecklist(mlic_insts, mlic_insts,
+                                       group='inst-filter', max_height='220px'),
                       title='Decision Rule Learning'),
-    dbc.AccordionItem(AllNoneChecklist(scep_insts, scep_insts, max_height='220px'),
+    dbc.AccordionItem(AllNoneChecklist(scep_insts, scep_insts,
+                                       group='inst-filter', max_height='220px'),
                       title='SetCovering-EP'),
-    dbc.AccordionItem(AllNoneChecklist(scsc_insts, scsc_insts, max_height='220px'),
+    dbc.AccordionItem(AllNoneChecklist(scsc_insts, scsc_insts,
+                                       group='inst-filter', max_height='220px'),
                       title='SetCovering-SC'),
 ], flush=True)
 inst_selector_radio = dbc.Accordion([
@@ -161,13 +180,13 @@ inst_selector_radio = dbc.Accordion([
                       title='SetCovering-SC'),
 ], flush=True)
 
-inst_selector=html.Div([
+inst_selector = html.Div([
     html.H5('Instances'),
     html.Div(id='div-inst-sel', children=[inst_selector_check],
              style={'height': '400px', 'maxHeight': '400px'}),
-], style = box_style)
+], style=box_style)
 
-alg_right=[
+alg_right = [
     dcc.Tabs(id='tabs-view', value='cactus-view', children=[
         dcc.Tab(label='Overview - Cactus and Histogram', value='cactus-view'),
         dcc.Tab(label='Pairwise Comparison', value='scatter-view'),
@@ -183,9 +202,9 @@ cactus_graphs = [
 splom_graph = dcc.Graph(id='splom-plot')
 
 run_table = dt.DashTabulator(
-    id = 'run-table', options = {'height': '600px', 'selectable': True})
+    id='run-table', options={'height': '600px', 'selectable': True})
 
-inst_right=[
+inst_right = [
     dcc.Graph(id='paretofront-plot'),
     dbc.Row([
         dbc.Col(dcc.Graph(id='runtime-plot'), width=6),
@@ -203,7 +222,7 @@ inst_tables = [
 # --- Main Layout ---
 
 app.layout = html.Div(
-    children = [
+    children=[
         html.H1('AlgView - View Algorithm Runtime Data'),
         dcc.Tabs(id='tabs-pages', value='algs-page', children=[
             dcc.Tab(label='Algorithms Page', value='algs-page'),
@@ -219,10 +238,11 @@ app.layout = html.Div(
             ]), width=4),
             dbc.Col(html.Div(id='div-right', style=box_style), width=8)
         ])]),
+        dcc.Store(id='filtered-alg'),
         dcc.Store(id='filtered-inst'),
         dcc.Store(id='selected-inst'),
         dcc.Store(id='single-inst'),
-    ], style = {'margin': '20px'}
+    ], style={'margin': '20px'}
 )
 
 # === Application Callbacks ===
@@ -259,30 +279,30 @@ def render_view(view):
     State('filtered-inst', 'data'),
 )
 def update_selected_inst(splom_select, table_select, filtered_inst):
-    ctx=callback_context
-    trigger=None
+    ctx = callback_context
+    trigger = None
     if ctx.triggered:
-        trigger=ctx.triggered[0]['prop_id'].split('.')[0]
+        trigger = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    selected_inst=filtered_inst
+    selected_inst = filtered_inst
 
     if trigger == 'splom-plot':
         if splom_select:
-            selected_inst=[p['id'] for p in splom_select['points']]
+            selected_inst = [p['id'] for p in splom_select['points']]
     elif trigger == 'run-table':
         if table_select:
-            selected_inst=[r['instance'] for r in table_select]
+            selected_inst = [r['instance'] for r in table_select]
 
     return selected_inst
 
 
 @ app.callback(
     Output('cactus-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('filtered-inst', 'data'),
 )
 def update_cactus(algs, insts):
-    data=run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
+    data = run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
                     & ~run_data['timeout'] & ~run_data['memout']].sort_values('time')
 
     for a in algs:
@@ -309,7 +329,7 @@ def update_cactus(algs, insts):
 
 @app.callback(
     Output('hist-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('filtered-inst', 'data'),
 )
 def update_hist(algs, insts):
@@ -333,7 +353,7 @@ def update_hist(algs, insts):
 @app.callback(
     Output('run-table', 'columns'),
     Output('run-table', 'data'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('filtered-inst', 'data'),
 )
 def update_table(algs, insts):
@@ -350,7 +370,7 @@ def update_table(algs, insts):
 
 @app.callback(
     Output('splom-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('filtered-inst', 'data'),
     Input('selected-inst', 'data'),
 )
@@ -411,7 +431,7 @@ def update_splom(algs, insts, selected_inst):
 
 @app.callback(
     Output('paretofront-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('single-inst', 'data'),
 )
 def update_paretofront(algs, inst):
@@ -457,7 +477,7 @@ def update_paretofront(algs, inst):
 
 @app.callback(
     Output('runtime-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('single-inst', 'data'),
 )
 def update_runtimes(algs, inst):
@@ -484,7 +504,7 @@ def update_runtimes(algs, inst):
 
 @app.callback(
     Output('progress-plot', 'figure'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('single-inst', 'data'),
 )
 def update_progress(algs, inst):
@@ -527,7 +547,7 @@ def update_progress(algs, inst):
 @app.callback(
     Output('run-data-table', 'data'),
     Output('run-data-table', 'columns'),
-    Input('checklist-alg', 'value'),
+    Input('filtered-alg', 'data'),
     Input('single-inst', 'data'),
 )
 def update_inst_run_table(algs, inst):
@@ -596,7 +616,7 @@ setup_anc(app)
 
 @app.callback(
     Output('filtered-inst', 'data'),
-    Input({'type': AllNoneChecklist.checklist_type, 'index': ALL}, 'value'),
+    Input({'type': AllNoneChecklist.checklist_type, 'group': 'inst-filter', 'index': ALL}, 'value'),
 )
 def update_filtered_insts(values):
     return list(itertools.chain.from_iterable(values))
@@ -625,3 +645,11 @@ def update_radio_inst(mlic, scep, scsc):
         return scsc, None, None, scsc
     else:
         raise PreventUpdate
+
+
+@app.callback(
+    Output('filtered-alg', 'data'),
+    Input({'type': AllNoneChecklist.checklist_type, 'group': 'alg-filter', 'index': ALL}, 'value'),
+)
+def update_filtered_algs(values):
+    return list(itertools.chain.from_iterable(values))
