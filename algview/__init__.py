@@ -1,1 +1,1 @@
-from .algview import app
+from .algview import app, server
