@@ -2,7 +2,8 @@
 
 import numpy as np
 import pandas as pd
-from dash import Dash, dcc, html, Input, Output, State, callback_context
+import itertools
+from dash import Dash, dcc, html, Input, Output, State, ALL, callback_context
 from dash.exceptions import PreventUpdate
 from dash.dash_table import DataTable
 import plotly.graph_objects as go
@@ -10,6 +11,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import dash_bootstrap_components as dbc
 import dash_tabulator as dt
+from .all_none_checklist import AllNoneChecklist, setup_anc
 
 # === Load Data ===
 
@@ -22,7 +24,7 @@ scep_inst_data = pd.read_pickle('data/scep_instances.pkl.gz')
 scsc_inst_data = pd.read_pickle('data/scsc_instances.pkl.gz')
 
 # Summaries
-algs = run_data['alg'].unique()
+algs = np.sort(run_data['alg'].unique())
 mlic_insts = mlic_inst_data.index.to_series()
 scep_insts = scep_inst_data.index.to_series()
 scsc_insts = scsc_inst_data.index.to_series()
@@ -118,8 +120,15 @@ def instance_type_colour(inst_type):
 
 # === Application Layout ===
 
-# --- Reusable Styles ---
 
+app = Dash(__name__,
+           external_stylesheets=[dbc.themes.BOOTSTRAP,
+                                 'https://codepen.io/chriddyp/pen/bWLwgP.css'],
+           suppress_callback_exceptions=True)
+
+server = app.server
+
+# --- Reusable Styles ---
 
 box_style = {'padding': '10px', 'border': '2px solid black'}
 
@@ -132,15 +141,21 @@ alg_selector = html.Div([
              id='checklist-alg')], style={'height': '400px', 'maxHeight': '400px', 'overflow': 'scroll'}),
 ], style=box_style)
 
-inst_selector_check = dcc.Checklist(
-    options=insts, value=insts, id='checklist-inst')
+inst_selector_check = dbc.Accordion([
+    dbc.AccordionItem(AllNoneChecklist(mlic_insts, mlic_insts, max_height='220px'),
+                      title='Decision Rule Learning'),
+    dbc.AccordionItem(AllNoneChecklist(scep_insts, scep_insts, max_height='220px'),
+                      title='SetCovering-EP'),
+    dbc.AccordionItem(AllNoneChecklist(scsc_insts, scsc_insts, max_height='220px'),
+                      title='SetCovering-SC'),
+], flush=True)
 inst_selector_radio = dcc.RadioItems(
     options=insts, value=insts[0], id='radio-inst')
 
 inst_selector = html.Div([
     html.H5('Instances'),
     html.Div(id='div-inst-sel', children=[inst_selector_check],
-             style={'height': '400px', 'maxHeight': '400px', 'overflow': 'scroll'}),
+             style={'height': '400px', 'maxHeight': '400px'}),
 ], style=box_style)
 
 alg_right = [
@@ -162,7 +177,7 @@ run_table = dt.DashTabulator(
     id='run-table', options={'height': '600px', 'selectable': True})
 
 inst_right = [
-    dbc.Row([dbc.Col(dcc.Graph(id='paretofront-plot'))]),
+    dcc.Graph(id='paretofront-plot'),
     dbc.Row([
         dbc.Col(dcc.Graph(id='runtime-plot'), width=6),
         dbc.Col(dcc.Graph(id='progress-plot'), width=6),
@@ -177,13 +192,6 @@ inst_tables = [
 ]
 
 # --- Main Layout ---
-
-app = Dash(__name__,
-           external_stylesheets=[dbc.themes.BOOTSTRAP,
-                                 'https://codepen.io/chriddyp/pen/bWLwgP.css'],
-           suppress_callback_exceptions=True)
-
-server = app.server
 
 app.layout = html.Div(
     children=[
@@ -202,6 +210,7 @@ app.layout = html.Div(
             ]), width=4),
             dbc.Col(html.Div(id='div-right', style=box_style), width=8)
         ])]),
+        dcc.Store(id='filtered-inst'),
         dcc.Store(id='selected-inst'),
     ], style={'margin': '20px'}
 )
@@ -237,7 +246,7 @@ def render_view(view):
     Output('selected-inst', 'data'),
     Input('splom-plot', 'selectedData'),
     Input('run-table', 'multiRowsClicked'),
-    State('checklist-inst', 'value'),
+    State('filtered-inst', 'data'),
 )
 def update_selected_inst(splom_select, table_select, filtered_inst):
     ctx = callback_context
@@ -260,7 +269,7 @@ def update_selected_inst(splom_select, table_select, filtered_inst):
 @app.callback(
     Output('cactus-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('checklist-inst', 'value'),
+    Input('filtered-inst', 'data'),
 )
 def update_cactus(algs, insts):
     data = run_data[run_data['alg'].isin(algs) & run_data['instance'].isin(insts)
@@ -291,7 +300,7 @@ def update_cactus(algs, insts):
 @app.callback(
     Output('hist-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('checklist-inst', 'value'),
+    Input('filtered-inst', 'data'),
 )
 def update_hist(algs, insts):
     data = run_data[run_data['alg'].isin(
@@ -315,7 +324,7 @@ def update_hist(algs, insts):
     Output('run-table', 'columns'),
     Output('run-table', 'data'),
     Input('checklist-alg', 'value'),
-    Input('checklist-inst', 'value'),
+    Input('filtered-inst', 'data'),
 )
 def update_table(algs, insts):
     data = table_data.filter(items=insts, axis=0)[algs + ['instance']]
@@ -323,7 +332,8 @@ def update_table(algs, insts):
     columns = [{'title': 'Instance', 'field': 'instance'}]
     for a in algs:
         columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {
-                       'min': 0, 'max': 5400}, 'hozAlign': 'left'})
+                       'min': 0, 'max': 5400, 'legend': True, 'color': 'orange'},
+            'hozAlign': 'left'})
 
     return columns, data.to_dict(orient='records')
 
@@ -331,7 +341,7 @@ def update_table(algs, insts):
 @app.callback(
     Output('splom-plot', 'figure'),
     Input('checklist-alg', 'value'),
-    Input('checklist-inst', 'value'),
+    Input('filtered-inst', 'data'),
     Input('selected-inst', 'data'),
 )
 def update_splom(algs, insts, selected_inst):
@@ -571,6 +581,12 @@ def update_inst_run_table(inst):
          {'title': 'Value', 'field': 'value', 'headerSort': False}]
 
 
-# === Main ===
-if __name__ == '__main__':
-    app.run_server(debug=True)
+setup_anc(app)
+
+
+@app.callback(
+    Output('filtered-inst', 'data'),
+    Input({'type': AllNoneChecklist.checklist_type, 'index': ALL}, 'value'),
+)
+def update_filtered_insts(values):
+    return list(itertools.chain.from_iterable(values))

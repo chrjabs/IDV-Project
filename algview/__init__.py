@@ -1,0 +1,1 @@
+from .algview import app
