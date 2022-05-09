@@ -3,6 +3,8 @@
 Project for the Interactive Data Visualization Course (University of Helsinki).
 Visualization of the performance of different Pareto front enumeration algorithms.
 
+The visualization is accesible online at [algview.herokuapp.com](https://algview.herokuapp.com) and can be run locally with the command `python app.py`.
+
 ## Layout
 
 ### Algorithm View - Cactus Plot
