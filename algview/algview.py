@@ -361,8 +361,9 @@ def update_table(algs, insts):
 
     columns = [{'title': 'Instance', 'field': 'instance'}]
     for a in algs:
+        c, _ = alg_colour_dash_scale(a)
         columns.append({'title': a, 'field': a, 'formatter': 'progress', 'formatterParams': {
-                       'min': 0, 'max': 5400, 'legend': True, 'color': 'orange'},
+                       'min': 0, 'max': 5400, 'legend': True, 'color': c},
             'hozAlign': 'left'})
 
     return columns, data.to_dict(orient='records')
