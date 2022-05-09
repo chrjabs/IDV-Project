@@ -30,8 +30,8 @@ pminimal_algs = [a for a in algs if 'pminimal' in a]
 seesaw_algs = [a for a in algs if 'seesaw' in a]
 paretomcs_algs = [a for a in algs if 'paretomcs' in a]
 mlic_insts = mlic_inst_data.index.to_series()
-scep_insts = scep_inst_data.index.to_series()
-scsc_insts = scsc_inst_data.index.to_series()
+scep_insts = scep_inst_data.index.to_series().sort_values()
+scsc_insts = scsc_inst_data.index.to_series().sort_values()
 insts = pd.concat([mlic_insts, scep_insts, scsc_insts]).unique()
 
 # Table Data
